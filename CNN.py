@@ -2,10 +2,12 @@
 import os
 import shutil
 
-
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+
+import torch as T
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data.dataloader import DataLoader
@@ -108,22 +110,22 @@ def build_folder(path, folder ,df) :
         else :
             print(origin + " is in the csv, but does not exist")
           
-def build_training_and_validation(path, df, valid_size) :
-    # 1 : separate training and validation set
+def build_training_and_testing(path, df, valid_size) :
+    # 1 : separate training and testing set
     train_df, valid_df = train_test_split(
         df, 
         test_size = valid_size,
         stratify = df['Category'])
     
-    # 2 : build training and validation folders
+    # 2 : build training and testing folders
     build_folder(path, "training", train_df)
-    build_folder(path, "validation", valid_df)
+    build_folder(path, "testing", valid_df)
 
 ##### MAIN ######
 # path where you want to store your data. Must contain the dataset-master file
 path = "./data/"
 
-# how you with to transform the data
+# how you want to transform the data
 transform = transforms.Compose([
     transforms.Resize((120,120)),
     transforms.ToTensor()])
@@ -133,48 +135,49 @@ transform = transforms.Compose([
 # I : read the labels
 df = load_csv(path)
 
-# II : separate training and validation set
-build_training_and_validation(path, df, 0.05)
+# II : separate training and testing set
+build_training_and_testing(path, df, 0.05)
 
-# III : build
+# III : train
 net = BloodCell()
 batch_size = 128
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=1e-3)
+optimizer = optim.SGD(net.parameters(), lr=1e-2)
 
 training_set = ImageFolder(path+"training",transform = transform)
-validation_set = ImageFolder(path+"validation",transform = transform)
+testing_set = ImageFolder(path+"testing",transform = transform)
 
-training = DataLoader(training_set, batch_size, shuffle = True)
-validation = DataLoader(validation_set, batch_size)
+training_loader = DataLoader(training_set, batch_size, shuffle = True)
+testing_loader = DataLoader(testing_set, batch_size)
 
 
-"""
-for epoch in range (100):
+epochs = 2
+min_valid_loss = np.inf
+
+for e in range(epochs):
+    train_loss = 0.0
     net.train()
-    running_loss = 0.0
-    for i, data in enumerate(training, 0):
-        inputs, labels = data
+    for data, labels in training_loader :
         optimizer.zero_grad()
-        outputs = net(inputs)
-        loss = criterion(outputs, labels)
+        output = net(data)
+        loss = criterion(output,labels)
         loss.backward()
         optimizer.step()
-        
-        running_loss += loss.item()
-    else:
-        print("Epoch{} - Training loss : {}".format(epoch,running_loss/len(training)))
+        train_loss += loss.item()
+    
+    valid_loss = 0.0
+    #valid_accuracy = 0.0
+    net.eval()
+    for data, labels in testing_loader:
+        output = net(data)
+        loss = criterion(output,labels)
+        valid_loss += loss.item()   
+        #valid_accuracy += 100*(output == labels).float().sum()
+                
+                
 
-"""
-for epoch in range (100):
-    net.train()
-    training_loss = 0.0
-    testing_loss = 0.0
+    print(f'Epoch {e+1} \t Training Loss: {train_loss / len(training_loader)} \t\t testing Loss: {valid_loss / len(testing_loader)}')
+    #print(f'Epoch {e+1} \t Training Accuracy: {train_accuracy / len(training_loader)} \t\t testing Accuracy: {valid_accuracy / len(testing_loader)}')
 
-    true_training, testing = train_test_split(
-        training, 
-        test_size = valid_size,
-        stratify = df['Category'])
-
-
+T.save(net.state_dict(), "./CNNBLoodCell")
 
