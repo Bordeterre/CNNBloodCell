@@ -15,6 +15,8 @@ from torch.utils.data.dataloader import DataLoader
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
+import matplotlib.pyplot as plt
+
 ##### ARCHITECTURE #####
 class BloodCell(nn.Module):
     def __init__(self):
@@ -125,25 +127,21 @@ def build_training_and_testing(path, df, valid_size) :
 # path where you want to store your data. Must contain the dataset-master file
 path = "./data/"
 
-# how you want to transform the data
-transform = transforms.Compose([
-    transforms.Resize((120,120)),
-    transforms.ToTensor()])
-
-
-
 # I : read the labels
 df = load_csv(path)
 
 # II : separate training and testing set
-build_training_and_testing(path, df, 0.05)
+build_training_and_testing(path, df, 0.2)
 
 # III : train
 net = BloodCell()
 batch_size = 128
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=1e-2)
 
+optimizer = optim.SGD(net.parameters(), lr=1e-3)
+#optimizer = optim.RMSprop(net.parameters(), lr=1e-3)
+
+transform = transforms.Compose([transforms.Resize((120,120)),transforms.ToTensor()])
 training_set = ImageFolder(path+"training",transform = transform)
 testing_set = ImageFolder(path+"testing",transform = transform)
 
@@ -151,11 +149,20 @@ training_loader = DataLoader(training_set, batch_size, shuffle = True)
 testing_loader = DataLoader(testing_set, batch_size)
 
 
-epochs = 2
+
+# 100 : overfitting
+# 50 c'est mieux ?
+epochs = 100
 min_valid_loss = np.inf
+
+training_losses = []
+valid_losses = []
+training_accuracies = []
+valid_accuracies = []
 
 for e in range(epochs):
     train_loss = 0.0
+    train_accuracy = 0.0
     net.train()
     for data, labels in training_loader :
         optimizer.zero_grad()
@@ -164,20 +171,54 @@ for e in range(epochs):
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
-    
-    valid_loss = 0.0
-    #valid_accuracy = 0.0
-    net.eval()
-    for data, labels in testing_loader:
-        output = net(data)
-        loss = criterion(output,labels)
-        valid_loss += loss.item()   
-        #valid_accuracy += 100*(output == labels).float().sum()
+        
+        _, predicted = T.max(output, 1)
+        train_accuracy += (predicted == labels).sum().item()/len(labels)
+        
+    with T.no_grad(): 
+        valid_loss = 0.0
+        valid_accuracy = 0.0
+        net.eval()
+        for data, labels in testing_loader:
+            output = net(data)
+            loss = criterion(output,labels)
+            valid_loss += loss.item()
+            
+            _, predicted = T.max(output, 1)
+            valid_accuracy += (predicted == labels).sum().item()/len(labels)
                 
-                
+            
+    print(f'Epoch {e+1}')
+    print(f'\t Training Loss: {train_loss / len(training_loader)}')
+    print(f'\t Validation Loss: {valid_loss / len(testing_loader)}')
+    print(f'\t Training Accuracy: {train_accuracy / len(training_loader)}')
+    print(f'\t Validation Accuracy: {valid_accuracy / len(testing_loader)}')
+    training_losses.append(train_loss / len(training_loader))
+    valid_losses.append(valid_loss / len(testing_loader))
+    training_accuracies.append(train_accuracy / len(training_loader))
+    valid_accuracies.append(valid_accuracy / len(testing_loader))
 
-    print(f'Epoch {e+1} \t Training Loss: {train_loss / len(training_loader)} \t\t testing Loss: {valid_loss / len(testing_loader)}')
-    #print(f'Epoch {e+1} \t Training Accuracy: {train_accuracy / len(training_loader)} \t\t testing Accuracy: {valid_accuracy / len(testing_loader)}')
+    if(valid_loss / len(testing_loader) < min_valid_loss) :
+        min_valid_loss = valid_loss
+        print("\t Amélioration de la loss, sauvegarde du modèle")
+        T.save(net.state_dict(), "./CNNBLoodCell")
 
-T.save(net.state_dict(), "./CNNBLoodCell")
 
+
+plt.plot(training_losses, label = "training")
+plt.plot(valid_losses, label = "validation")
+plt.legend()
+plt.xlabel('Epoch')
+plt.ylabel('Cross entropy loss')
+plt.title('Loss plot, using the SGD optimizer')
+plt.savefig("loss_plot_SGD.png")
+plt.show()
+
+plt.plot(training_accuracies, label = "training")
+plt.plot(valid_accuracies, label = "validation")
+plt.legend()
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.title('Accuracy plot, using the SGD optimizer')
+plt.savefig("accuracy_plot_SGD.png")
+plt.show()
