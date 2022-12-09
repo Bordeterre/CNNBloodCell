@@ -1,3 +1,11 @@
+##### PARAMETERS #####
+# path where you want to store your data. Must contain the dataset-master file
+path = "./data/"
+# optimizer selected. Only SGD and RMSprop are supported
+optimizer_name = "SGD"
+# how many epoch you want to use to train the CNN
+epochs = 100
+
 ##### IMPORTS ######
 import os
 import shutil
@@ -71,7 +79,7 @@ class BloodCell(nn.Module):
 ##### FUNCTIONS ######
 def load_csv(path) :
     # 1 : read the csv
-    df = pd.read_csv(path+"dataset-master/labels_full.csv",sep =",")
+    df = pd.read_csv(path+"dataset-master/labels.csv",sep =",")
     
     # 2 : remove images with missing labels
     df = df[df['Category'].notnull()]
@@ -124,22 +132,25 @@ def build_training_and_testing(path, df, valid_size) :
     build_folder(path, "testing", valid_df)
 
 ##### MAIN ######
-# path where you want to store your data. Must contain the dataset-master file
-path = "./data/"
+
 
 # I : read the labels
 df = load_csv(path)
 
 # II : separate training and testing set
-build_training_and_testing(path, df, 0.2)
+build_training_and_testing(path, df, 0.25)
 
-# III : train
+# III : training parameter
 net = BloodCell()
 batch_size = 128
 criterion = nn.CrossEntropyLoss()
 
-optimizer = optim.SGD(net.parameters(), lr=1e-3)
-#optimizer = optim.RMSprop(net.parameters(), lr=1e-3)
+if(optimizer_name == "SGD") :
+    optimizer = optim.SGD(net.parameters(), lr=1e-3)
+elif(optimizer_name == "RMSprop") :
+    optimizer = optim.RMSprop(net.parameters(), lr=1e-3)
+else : 
+    raise Exception("Please use the SGD or RMSprop optimizer !")
 
 transform = transforms.Compose([transforms.Resize((120,120)),transforms.ToTensor()])
 training_set = ImageFolder(path+"training",transform = transform)
@@ -148,13 +159,8 @@ testing_set = ImageFolder(path+"testing",transform = transform)
 training_loader = DataLoader(training_set, batch_size, shuffle = True)
 testing_loader = DataLoader(testing_set, batch_size)
 
-
-
-# 100 : overfitting
-# 50 c'est mieux ?
-epochs = 100
+# IV : Training
 min_valid_loss = np.inf
-
 training_losses = []
 valid_losses = []
 training_accuracies = []
@@ -204,14 +210,14 @@ for e in range(epochs):
         T.save(net.state_dict(), "./CNNBLoodCell")
 
 
-
+#V : Plots
 plt.plot(training_losses, label = "training")
 plt.plot(valid_losses, label = "validation")
 plt.legend()
 plt.xlabel('Epoch')
 plt.ylabel('Cross entropy loss')
-plt.title('Loss plot, using the SGD optimizer')
-plt.savefig("loss_plot_SGD.png")
+plt.title('Loss plot, using the ' + optimizer_name + ' optimizer')
+plt.savefig("loss_plot_"+ optimizer_name +".png")
 plt.show()
 
 plt.plot(training_accuracies, label = "training")
@@ -219,6 +225,6 @@ plt.plot(valid_accuracies, label = "validation")
 plt.legend()
 plt.xlabel('Epoch')
 plt.ylabel('Accuracy')
-plt.title('Accuracy plot, using the SGD optimizer')
-plt.savefig("accuracy_plot_SGD.png")
+plt.title('Accuracy plot, using the ' + optimizer_name + ' optimizer')
+plt.savefig("accuracy_plot_"+ optimizer_name +".png")
 plt.show()
